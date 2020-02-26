@@ -15,8 +15,7 @@
 #include <unistd.h>
 
 
-#define PAYLOAD_SIZE 512
-#define PAGE_SIZE 4096
+#define PAGESIZE 4096
 
 
 typedef struct _elf64 {
@@ -30,7 +29,7 @@ typedef struct _elf64 {
 void *map_elf(void *pa);
 
 
-int pack_text(elf64 *elf);
+int pack_text(elf64 *elf, size_t fsize);
 
 
 #endif

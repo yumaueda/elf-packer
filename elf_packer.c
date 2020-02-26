@@ -15,21 +15,21 @@ static void *map_file(char *filename, size_t *ptr_fsize)
     int fd;
     struct stat stbuf;
     off_t fsize;
-    void *pa; 
+    void *pa;
 
     if ((fd = open(filename, O_RDONLY)) == -1) {
-        perror("open\n");
+        perror("open");
         exit(EXIT_FAILURE);
     }
 
     if (fstat(fd, &stbuf) == -1) {
-        perror("fstat\n");
+        perror("fstat");
         exit(EXIT_FAILURE);
     }
     fsize = stbuf.st_size;
 
     if ((pa = mmap((void *)0, (size_t)fsize, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0)) == (void *)-1) {
-        perror("mmap\n");
+        perror("mmap");
         exit(EXIT_FAILURE);
     }
 
@@ -57,15 +57,14 @@ int main(int argc, char **argv)
 
     pa = map_file(argv[1], &fsize);
     elf = (elf64 *)map_elf(pa);
+    munmap(pa, fsize);
 
     if (!is_elf(elf)) {
         fprintf(stderr, "unsupported format\n");
         exit(EXIT_FAILURE);
-    }    
+    }
 
-    munmap(pa, fsize);
-
-    pack_text(elf);
+    pack_text(elf, fsize);
 
     return EXIT_SUCCESS;
 }
