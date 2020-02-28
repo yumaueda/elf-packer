@@ -31,6 +31,8 @@ static void write_on_mem(elf64 *elf, void *ptr_packed, uint64_t key, uint16_t la
     memcpy(ptr_packed, elf->eheader, elf->eheader->e_ehsize);
     memcpy(ptr_packed + elf->eheader->e_phoff, elf->pheader, phtsize);
     for (uint16_t idx = 0; idx < elf->eheader->e_shnum; idx++) {
+        if (elf->sdata[idx] == NULL)
+            continue;
         if (idx != lastsh_idx) {
             memcpy(ptr_packed + elf->sheader[idx].sh_offset, elf->sdata[idx], elf->sheader[idx].sh_size);
         }

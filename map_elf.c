@@ -12,13 +12,18 @@ static int map_sdata(elf64 *elf, void *pa)
     size_t elf_section_size;
 
     for (uint16_t i = 0; i < shnum; i++) {
-        elf_section_size = (size_t)elf->sheader[i].sh_size;
-        if ((elf->sdata[i] =  (uint8_t *)calloc((size_t)1, elf_section_size)) == NULL) {
-            perror("calloc");
-            exit(EXIT_FAILURE);
+        if (elf->sheader[i].sh_type == SHT_NOBITS) {
+            elf->sdata[i] = (uint8_t *)NULL;
         }
+        else {
+            elf_section_size = (size_t)elf->sheader[i].sh_size;
+            if ((elf->sdata[i] =  (uint8_t *)calloc((size_t)1, elf_section_size)) == NULL) {
+                perror("calloc");
+                exit(EXIT_FAILURE);
+            }
 
-        memcpy(elf->sdata[i], (uint8_t *)pa+elf->sheader[i].sh_offset, elf_section_size);
+            memcpy(elf->sdata[i], (uint8_t *)pa+elf->sheader[i].sh_offset, elf_section_size);
+        }
     }
 
     return EXIT_SUCCESS;
