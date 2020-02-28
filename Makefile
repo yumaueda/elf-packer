@@ -2,14 +2,14 @@ NAME = elf_packer
 CC   = gcc
 AS   = nasm
 
-CFLAGS  = -Wall -Wextra -std=c99
+CFLAGS  = -Wall -Wextra -std=c99 -I include
 ASFLAGS = -f elf64
 
-SRC =   elf_packer.c \
-		map_elf.c \
-		pack_elf.c
+SRC = src/elf_packer.c \
+	src/map_elf.c \
+	src/pack_elf.c
 
-SRC_ASM = loader.S
+SRC_ASM = src/loader.S
 
 OBJ_ASM = $(SRC_ASM:.S=.o)
 
@@ -20,6 +20,6 @@ $(OBJ_ASM): $(SRC_ASM)
 	$(AS) $(ASFLAGS) -o $@ $^
 
 clean:
-	rm -f $(NAME) loader.o
+	rm -f $(NAME) src/loader.o
 
 .PHONY: elf-packer clean
