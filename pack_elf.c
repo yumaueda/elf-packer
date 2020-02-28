@@ -3,66 +3,60 @@
 
 extern void loader_entry(void);
 extern uint64_t loader_size;
-extern uint64_t mprotect_offset;
 extern uint64_t unpack_offset;
 
 
-static uint16_t ep_sh_idx;
-static uint16_t last_ptload_sh_idx;
-
-static uint64_t ep_sh_addr;
-static uint64_t ep_sh_offset;
-static uint64_t ep_sh_size;
-
-static uint64_t ep_segment_vaddr;
-static uint64_t ep_segment_offset;
-static uint64_t ep_segment_filesz;
-
-static uint64_t old_e_entry;
-
-
-static void append_payload(elf64 *elf,void *ptr_packed, uint16_t idx, uint64_t key)
+static void append_payload(elf64 *elf, void *ptr_packed, uint16_t idx, uint64_t old_e_entry, uint64_t key, uint16_t textsec_idx)
 {
-    uint64_t sh_offset = elf->sheader[idx].sh_offset;
-    uint64_t sh_size = elf->sheader[idx].sh_size;
-    void *loader_addr = ptr_packed + sh_offset + sh_size - loader_size;
-
+    void *loader_addr = ptr_packed + elf->sheader[idx].sh_offset + elf->sheader[idx].sh_size - loader_size;
+    uint64_t r12_sub_text = elf->sheader[idx].sh_addr + elf->sheader[idx].sh_size - loader_size - elf->sheader[textsec_idx].sh_addr;
+    uint64_t text_sh_size = elf->sheader[textsec_idx].sh_size;
     ssize_t target_addr = old_e_entry - elf->eheader->e_entry - loader_size;
 
     memcpy(loader_addr, (void *)loader_entry, loader_size);
 
     /* overrwrite immediate value of mov instructions */
-    memcpy(loader_addr + mprotect_offset +  0 + 2, &old_e_entry, 8);
-    memcpy(loader_addr + mprotect_offset + 10 + 2, &ep_sh_size, 8);
-    memcpy(loader_addr + unpack_offset +  0 + 2, &old_e_entry, 8);
-    memcpy(loader_addr + unpack_offset + 10 + 2, &ep_sh_size, 8);
+    memcpy(loader_addr + unpack_offset +  0 + 2, &r12_sub_text, 8);
+    memcpy(loader_addr + unpack_offset + 10 + 2, &text_sh_size, 8);
     memcpy(loader_addr + unpack_offset + 20 + 2, &key, 8);
     /* overwrite */
     memcpy(loader_addr + loader_size - 4, &target_addr, 4);
 }
 
 
-static void write_on_mem(elf64 *elf, void *ptr_packed, uint64_t key)
+static void write_on_mem(elf64 *elf, void *ptr_packed, uint64_t key, uint16_t lastsh_idx, uint64_t old_e_entry, uint16_t textsec_idx)
 {
-    size_t ehsize = elf->eheader->e_ehsize;
     size_t phtsize = elf->eheader->e_phentsize * elf->eheader->e_phnum;
-    uint16_t shnum = elf->eheader->e_shnum;
-    size_t shtsize  = shnum * elf->eheader->e_shentsize;
-
-    memcpy(ptr_packed, elf->eheader, ehsize);
-
+    size_t shtsize  = elf->eheader->e_shnum * elf->eheader->e_shentsize;
+    memcpy(ptr_packed, elf->eheader, elf->eheader->e_ehsize);
     memcpy(ptr_packed + elf->eheader->e_phoff, elf->pheader, phtsize);
+    for (uint16_t idx = 0; idx < elf->eheader->e_shnum; idx++) {
+        if (idx != lastsh_idx) {
+            memcpy(ptr_packed + elf->sheader[idx].sh_offset, elf->sdata[idx], elf->sheader[idx].sh_size);
+        }
+        else {
+            memcpy(ptr_packed + elf->sheader[idx].sh_offset, elf->sdata[idx], elf->sheader[idx].sh_size - loader_size);
+            append_payload(elf, ptr_packed, idx, old_e_entry, key, textsec_idx);
+        }
+    }
+    memcpy(ptr_packed + elf->eheader->e_shoff, elf->sheader, shtsize);
+}
 
-    size_t sdata_size;
-    for (uint16_t idx = 0; idx < shnum; idx++) {
-        sdata_size = elf->sheader[idx].sh_size;
-        memcpy(ptr_packed + elf->sheader[idx].sh_offset, elf->sdata[idx], sdata_size);
 
-        if (idx == last_ptload_sh_idx)
-            append_payload(elf, ptr_packed, idx, key);
+static uint16_t get_seg_idx_by_sec_idx(elf64 *elf, uint16_t sec_idx)
+{
+    uint64_t sh_offset = elf->sheader[sec_idx].sh_offset;
+    uint64_t sh_size = elf->sheader[sec_idx].sh_size;
+    for (uint16_t seg_idx = 0; seg_idx < elf->eheader->e_phnum; seg_idx++) {
+        if (elf->pheader[seg_idx].p_type != PT_LOAD)
+            continue;
+
+        if (elf->pheader[seg_idx].p_offset <= sh_offset && elf->pheader[seg_idx].p_filesz >= sh_size)
+            return seg_idx;
     }
 
-    memcpy(ptr_packed + elf->eheader->e_shoff, elf->sheader, shtsize);
+    fprintf(stderr, "the segment conitans the section %u not found\n", sec_idx);
+    exit(EXIT_FAILURE);
 }
 
 
@@ -94,155 +88,95 @@ static uint64_t encrypt_section(elf64 *elf, uint16_t idx)
         one_time_key = rotate_right(one_time_key);
     }
 
-    char *new_sh_name = "crypt";
-    memcpy(elf->sdata[elf->eheader->e_shstrndx] + elf->sheader[idx].sh_name, (uint8_t *)new_sh_name, 5);
-
     return key;
 }
 
 
-static void modify_header(elf64 *elf)
-{
-    old_e_entry = elf->eheader->e_entry;
-    elf->eheader->e_entry = ep_segment_vaddr + ep_segment_filesz;
-    elf->eheader->e_shoff += PAGESIZE;
-}
-
-
-static inline bool is_last_section_in_ptload(elf64* elf, uint16_t idx)
-{
-    uint64_t sh_offset = elf->sheader[idx].sh_offset;
-    uint64_t sh_size = elf->sheader[idx].sh_size;
-    return sh_offset + sh_size == ep_segment_offset + ep_segment_filesz;
-}
-
-
-static char *get_section_name(elf64 *elf, uint16_t idx)
+static inline char *get_section_name(elf64 *elf, uint16_t idx)
 {
     uint16_t shstrndx = elf->eheader->e_shstrndx;
     return ((char *)elf->sdata[shstrndx] + elf->sheader[idx].sh_name);
 }
 
 
-static inline bool contain_entrypoint_section(elf64 *elf, uint16_t idx)
+static uint16_t get_section_by_name(elf64 *elf, char *section_name)
 {
-    if (strcmp(".debug_info", get_section_name(elf, idx)) == 0)
-        return false;
-
-    uint64_t e_entry = elf->eheader->e_entry;
-    uint64_t sh_addr = elf->sheader[idx].sh_addr;
-    uint64_t sh_size = elf->sheader[idx].sh_size;
-    return e_entry >= sh_addr && e_entry < sh_addr+sh_size;
-}
-
-
-static void modify_sections(elf64 *elf)
-{
-    bool corrupt = false;
-    bool contain_ep_sh = false;
-
     for (uint16_t idx = 0; idx < elf->eheader->e_shnum; idx++) {
-        if (corrupt == true)
-            elf->sheader[idx].sh_offset += PAGESIZE;
-
-        if (contain_entrypoint_section(elf, idx) == true) {
-            contain_ep_sh = true;
-
-            ep_sh_idx = idx;
-
-            ep_sh_addr = elf->sheader[idx].sh_offset;
-            ep_sh_offset = elf->sheader[idx].sh_offset;
-            ep_sh_size = elf->sheader[idx].sh_size;
-
-            elf->sheader[idx].sh_flags |= SHF_WRITE;
-        }
-
-        if (is_last_section_in_ptload(elf, idx) == true)
-        {
-            corrupt = true;
-
-            last_ptload_sh_idx = idx;
-
-            elf->sheader[idx].sh_size += loader_size;
-        }
+        if (strcmp(section_name, get_section_name(elf, idx)) == 0)
+            return idx;
     }
 
-    if (contain_ep_sh == false) {
-        fprintf(stderr, "a section contains entrypoint not found\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if (corrupt == false) {
-        fprintf(stderr, "a last ptload section not found\n");
-        exit(EXIT_FAILURE);
-    }
+    fprintf(stderr, "the %s section not found\n", section_name);
+    exit(EXIT_FAILURE);
 }
 
 
-static inline bool contain_entrypoint_segment(elf64 *elf, uint16_t idx)
+static uint16_t get_lastsh_idx(elf64 *elf, uint16_t targetseg_idx)
 {
-    if (elf->eheader->e_entry < elf->pheader[idx].p_vaddr)
-        return false;
-    if (elf->eheader->e_entry >= elf->pheader[idx].p_vaddr+elf->pheader[idx].p_filesz)
-        return false;
+    uint64_t sh_offset;
+    uint64_t sh_size;
+    for (uint16_t idx; idx < elf->eheader->e_shnum; idx++) {
 
-    return true;
+        sh_offset = elf->sheader[idx].sh_offset;
+        sh_size = elf->sheader[idx].sh_size;
+        if (sh_offset + sh_size == elf->pheader[targetseg_idx].p_offset + elf->pheader[targetseg_idx].p_filesz)
+            return idx;
+    }
+
+    fprintf(stderr, "the last section in the target segment not found\n");
+    exit(EXIT_FAILURE);
 }
 
 
-static void modify_segments(elf64 *elf)
+static uint16_t find_gap(elf64 *elf)
 {
-    bool corrupt = false;
+    uint64_t  p_vaddr;
+    uint64_t  p_memsz;
     for (uint16_t idx = 0; idx < elf->eheader->e_phnum; idx++) {
-        if (corrupt == true)
-            elf->pheader[idx].p_offset += PAGESIZE;
+        if (elf->pheader[idx].p_type != PT_LOAD)
+            continue;
 
-        if (contain_entrypoint_segment(elf, idx) == true) {
-            corrupt = true;
-
-            ep_segment_vaddr = elf->pheader[idx].p_vaddr;
-            ep_segment_offset = elf->pheader[idx].p_offset;
-            ep_segment_filesz = elf->pheader[idx].p_filesz;
-
-            elf->pheader[idx].p_filesz += loader_size;
-            elf->pheader[idx].p_memsz += loader_size;
-            elf->pheader[idx].p_flags |= PF_W | PF_X;
-        }
+        p_vaddr = elf->pheader[idx].p_vaddr;
+        p_memsz = elf->pheader[idx].p_memsz;
+        if (elf->pheader[idx+1].p_vaddr - p_vaddr + p_memsz >= loader_size)
+            return idx;
     }
 
-    if (corrupt == false) {
-        fprintf(stderr, "a segment contains entrypoint not found\n");
-        exit(EXIT_FAILURE);
-    }
+    fprintf(stderr, "a sufficient gap not found\n");
+    exit(EXIT_FAILURE);
 }
+
 
 int pack_text(elf64 *elf, size_t fsize)
 {
-    uint64_t key;
+    uint16_t targetseg_idx = find_gap(elf);
+    uint16_t lastsh_idx = get_lastsh_idx(elf, targetseg_idx);
 
-    modify_segments(elf);
-    modify_sections(elf);
-    modify_header(elf);
-    key = encrypt_section(elf, ep_sh_idx);
 
-    fsize += PAGESIZE;
+    uint64_t old_e_entry = elf->eheader->e_entry;
+    elf->eheader->e_entry = elf->sheader[lastsh_idx].sh_offset + elf->sheader[lastsh_idx].sh_size;
+    elf->pheader[targetseg_idx].p_filesz += loader_size;
+    elf->pheader[targetseg_idx].p_memsz += loader_size;
+    elf->sheader[lastsh_idx].sh_size += loader_size;
+
+    uint16_t textsec_idx = get_section_by_name(elf, ".text");
+    uint64_t key = encrypt_section(elf, textsec_idx);
+
+    uint64_t textseg_idx = get_seg_idx_by_sec_idx(elf, textsec_idx);
+    elf->pheader[textseg_idx].p_flags |= PF_W;
 
     int fd;
     char const *filename = "packed";
     void *ptr_packed;
-
     if ((fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU)) == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
-
     if ((ptr_packed = calloc((size_t)1, fsize)) == NULL) {
         perror("calloc");
         exit(EXIT_FAILURE);
     }
-
-    write_on_mem(elf, ptr_packed, key);
-
+    write_on_mem(elf, ptr_packed, key, lastsh_idx, old_e_entry, textsec_idx);
     write(fd, ptr_packed, fsize);
 
     return EXIT_SUCCESS;

@@ -7,46 +7,31 @@ global unpack_offset:data
 
 default rel
 
-section .text
-
 loader_size:     dq end - loader_entry
-mprotect_offset: dq mprotect - loader_entry
 unpack_offset:   dq start_unpack - loader_entry
 
 loader_entry:
     push rax
     push rcx
     push rdx
-
-mprotect:
-    mov rdi, 0xAAAAAAAAAAAAAAAA
-    mov rsi, 0xBBBBBBBBBBBBBBBB
-    mov rdx, 0x1 | 0x2 | 0x4    ; PROT_READ | PROT_WRITE | PROT
-    mov rax, 0x10               ; mprotect
-    syscall
-
-    cmp rax, 0x0
-    jz start_unpack
-
-exit:
-    mov rax, 0x60
-    mov rdi, 0x1
-    syscall
+    push r12
 
 start_unpack:
     mov rax, 0xAAAAAAAAAAAAAAAA
     mov rcx, 0xBBBBBBBBBBBBBBBB
     mov rdx, 0xCCCCCCCCCCCCCCCC
-    add rcx, rax
+    sub r12, rax
+    add rcx, r12
 
-.loop_start xor byte [rax], dl
+.loop_start xor byte [r12], dl
             ror rdx, 1
-            inc rax
-            cmp rcx, rax
+            inc r12
+            cmp rcx, r12
             jnz .loop_start
 
-   pop rdx
-   pop rcx
-   pop rax
-   jmp 0xDDDDDDDD
+    pop r12
+    pop rdx
+    pop rcx
+    pop rax
+    jmp 0xDDDDDDDD
 end:
