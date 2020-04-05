@@ -40,31 +40,62 @@ static void *map_file(char *filename, size_t *ptr_fsize)
 }
 
 
+void usage(void)
+{
+    printf("Usage:\n"
+           "    elf_packer [options] file\n"
+           "Options:\n"
+           "    -p    pack a file\n");
+           // "    -u    unpack a file\n");
+}
+
+
 int main(int argc, char **argv)
 {
+    int opt;
+    int mode;
     void *pa;
     size_t fsize;
     elf64 *elf;
 
     if (argc < 2) {
-        printf("usage: %s file\n", argv[0]);
+        usage();
         return EXIT_SUCCESS;
-    }
-    else if (argc > 2) {
-        fprintf(stderr, "too many arguments\n");
+    } else if (argc > 3 || argc == 2) {
+        fprintf(stderr, "wrong number of arguments\n");
+        usage();
         return EXIT_FAILURE;
     }
 
-    pa = map_file(argv[1], &fsize);
+    while ((opt = getopt(argc, argv, "p:u:")) != -1) {
+        switch (opt) {
+            case 'p':
+                mode = MODE_PACK;
+                break;
+            case 'u':
+                mode = MODE_UNPACK;
+                break;
+            default:
+                usage();
+                return EXIT_FAILURE;
+        }
+    }
+
+    pa = map_file(argv[2], &fsize);
     elf = (elf64 *)map_elf(pa);
     munmap(pa, fsize);
 
     if (!is_elf(elf)) {
         fprintf(stderr, "unsupported format\n");
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
-    pack_text(elf, fsize);
+    if (mode == MODE_PACK)
+        pack_text(elf, fsize);
+    /*
+    else (mode == MODE_UNPACK)
+        unpack_text(elf, fsize);
+    */
 
     return EXIT_SUCCESS;
 }
