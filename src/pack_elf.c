@@ -170,7 +170,7 @@ int pack_text(elf64 *elf, size_t fsize)
     int fd;
     char const *filename = "packed";
     void *ptr_packed;
-    if ((fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU)) == -1) {
+    if ((fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IXUSR)) == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
