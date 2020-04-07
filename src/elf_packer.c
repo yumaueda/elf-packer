@@ -45,8 +45,8 @@ void usage(void)
     printf("Usage:\n"
            "    elf_packer [options] file\n"
            "Options:\n"
-           "    -p    pack a file\n");
-           // "    -u    unpack a file\n");
+           "    -p    pack a file\n"
+           "    -u    unpack a file\n");
 }
 
 
@@ -92,10 +92,8 @@ int main(int argc, char **argv)
 
     if (mode == MODE_PACK)
         pack_text(elf, fsize);
-    /*
-    else (mode == MODE_UNPACK)
+    else if (mode == MODE_UNPACK)
         unpack_text(elf, fsize);
-    */
 
     return EXIT_SUCCESS;
 }

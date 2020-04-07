@@ -46,24 +46,6 @@ static void write_on_mem(elf64 *elf, void *ptr_packed, Elf64_Half lastsh_idx)
 }
 
 
-static Elf64_Half get_seg_idx_by_sec_idx(elf64 *elf, Elf64_Half sec_idx)
-{
-    Elf64_Off sh_offset = elf->sheader[sec_idx].sh_offset;
-    Elf64_Xword sh_size = elf->sheader[sec_idx].sh_size;
-    Elf64_Half seg_idx;
-
-    for (seg_idx = 0; seg_idx < elf->eheader->e_phnum; seg_idx++) {
-        if (elf->pheader[seg_idx].p_type != PT_LOAD)
-            continue;
-        if (elf->pheader[seg_idx].p_offset <= sh_offset && elf->pheader[seg_idx].p_filesz >= sh_size)
-            return seg_idx;
-    }
-
-    fprintf(stderr, "a segment conitans the section %u not found\n", sec_idx);
-    exit(EXIT_FAILURE);
-}
-
-
 static uint64_t encrypt_section(elf64 *elf, Elf64_Half idx)
 {
     uint64_t key, one_time_key;

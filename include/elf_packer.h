@@ -44,11 +44,16 @@ void *map_elf(void *pa);
 
 
 // elf_packer_lib.c
+Elf64_Half get_seg_idx_by_sec_idx(elf64 *elf, Elf64_Half sec_idx);
 uint16_t get_section_by_name(elf64 *elf, char *section_name);
 
 
 // pack_elf.c
 int pack_text(elf64 *elf, size_t fsize);
+
+
+// unpack_elf.c
+int unpack_text(elf64 *elf, size_t fsize);
 
 
 #endif
