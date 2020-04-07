@@ -1,4 +1,5 @@
 elf_packer
 tags
 packed
+unpacked
 *.o
