@@ -15,8 +15,7 @@ static void append_payload(
     void *loader_addr = ptr_packed + elf->sheader[idx].sh_offset + elf->sheader[idx].sh_size - loader_size;
     uint64_t r12_sub_text = elf->sheader[idx].sh_addr + elf->sheader[idx].sh_size - loader_size - elf->sheader[textsec_idx].sh_addr;
     Elf64_Xword text_sh_size = elf->sheader[textsec_idx].sh_size;
-    ssize_t target_addr = old_e_entry - elf->eheader->e_entry - loader_size;
-
+    int target_addr = old_e_entry - elf->eheader->e_entry - loader_size;
     memcpy(loader_addr, (void *)loader_entry, loader_size);
     /* overrwrite the immediate value of instructions */
     memcpy(loader_addr + unpack_offset +  0 + 2, &r12_sub_text, 8);
@@ -35,12 +34,10 @@ static void write_on_mem(elf64 *elf, void *ptr_packed, Elf64_Half lastsh_idx)
     for (Elf64_Half idx = 0; idx < elf->eheader->e_shnum; idx++) {
         if (elf->sdata[idx] == NULL)
             continue;
-        if (idx != lastsh_idx) {
+        if (idx != lastsh_idx)
             memcpy(ptr_packed + elf->sheader[idx].sh_offset, elf->sdata[idx], elf->sheader[idx].sh_size);
-        }
-        else {
+        else
             memcpy(ptr_packed + elf->sheader[idx].sh_offset, elf->sdata[idx], elf->sheader[idx].sh_size - loader_size);
-        }
     }
     memcpy(ptr_packed + elf->eheader->e_shoff, elf->sheader, shtsize);
 }
